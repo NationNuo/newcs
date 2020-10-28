@@ -44,9 +44,6 @@ str_cli(int pin, int sockfd,FILE **writefp)
 		*(int*)(&(totalbuf[4]))=htonl(len);
 		sprintf(&totalbuf[8],"%s",sendline);
 		write(sockfd, totalbuf, len+8);
-		// write(sockfd, &clipintosend,sizeof(clipintosend));
-		// write(sockfd, &len,sizeof(len));
-		// write(sockfd, sendline, len);
 
 		n = read(sockfd, &clipintorecv, sizeof(clipintorecv));	
 		n = read(sockfd, &len, sizeof(len));
@@ -77,7 +74,7 @@ echoend:
 }
 
 void sig_int(int signo){
-	printf("[srv] SIGINT is coming!\n");
+	printf("[srv] SIGINT is coming!\n");//其实是不合适的做法，有导致死锁的风险
 	fflush(stdout);
 	exit(0);
 }
@@ -85,10 +82,11 @@ void sig_pip(int signo){
 	printf("[srv] SIGPIPE is coming!\n");
 	fflush(stdout);
 }
-void handler(int signo){
+void sig_chd(int signo){
     wait(0);
     return;
 }
+
 int
 main(int argc, char **argv)
 {
@@ -103,18 +101,19 @@ main(int argc, char **argv)
 	
 	sigemptyset(&act1.sa_mask);
 	act1.sa_handler=sig_pip;
-    act1.sa_flags=0;
+    act1.sa_flags=SA_RESTART;//确保受到信号触发的慢调用函数重启而非返回异常
 	sigaction(SIGPIPE,&act1,NULL);
 
 	sigemptyset(&act2.sa_mask);
 	act2.sa_handler=sig_int;
-    act2.sa_flags=0;
+    act2.sa_flags=SA_RESTART;
     sigaction(SIGINT,&act2,NULL);
 
 	sigemptyset(&act3.sa_mask);
-	act2.sa_handler=handler;
-    act2.sa_flags=0;
+	act2.sa_handler=sig_chd;
+    act2.sa_flags=SA_RESTART;
     sigaction(SIGCHLD,&act2,NULL);
+
 	for(int pin=multis-1;pin>=0;pin--){//son process start from 1
 		if(pin==0)
 		{
@@ -128,16 +127,16 @@ main(int argc, char **argv)
 			printf("[cli](%d) stu_cli_res_%d.txt is created!\n",(int)getpid(),pin);
 			bprintf(fp,"[cli](%d) parent process %d is created!\n",(int)getpid(),pin);
 			fflush(stdout);
+
 			memset(&servaddr,0,sizeof(servaddr));
 			servaddr.sin_family = AF_INET;
 			servaddr.sin_port = htons(atoi(argv[2]));//host to network short
 			inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
-			connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+			connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));//强转细节，因为第二个参数要求传入的是sockaddr
 			bprintf(fp,"[cli](%d) server[%s:%d] is connected!\n",(int)getpid(),argv[1],atoi(argv[2]));
 			fflush(stdout);
 
 			str_cli(pin, sockfd,&fp);		/* do it all */	
-			//exit(0);
 			continue;
 		}else if ((pid = fork())==0)
 		{
@@ -151,6 +150,7 @@ main(int argc, char **argv)
 			printf("[cli](%d) stu_cli_res_%d.txt is created!\n",(int)getpid(),pin);
 			bprintf(fp,"[cli](%d) child process %d is created!\n",(int)getpid(),pin);
 			fflush(stdout);
+
 			memset(&servaddr,0,sizeof(servaddr));
 			servaddr.sin_family = AF_INET;
 			servaddr.sin_port = htons(atoi(argv[2]));//host to network short

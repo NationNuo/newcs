@@ -49,10 +49,6 @@ again:
 		*(int*)(&(totalbuf[4]))=htonl(len);
 		sprintf(&totalbuf[8],"%s",buf);
 		write(sockfd, totalbuf, len+8);
-		// write(sockfd, &sendpin, sizeof(sendpin));
-		// write(sockfd, &len, sizeof(len));
-		// write(sockfd, buf, len);
-//		printf("buf %s\n",buf);
 		memset(buf,0,sizeof(buf));
 		memset(totalbuf,0,sizeof(totalbuf));
 	}	
@@ -119,7 +115,7 @@ main(int argc, char **argv)
 	
 	sigemptyset(&act2.sa_mask);
 	act2.sa_handler=sig_int;
-    act2.sa_flags=0;
+    act2.sa_flags=SA_RESTART;
     sigaction(SIGINT,&act2,NULL);
 
 	sigemptyset(&act3.sa_mask);
@@ -130,7 +126,7 @@ main(int argc, char **argv)
 	listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family      = AF_INET;
-	inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
+	inet_pton(AF_INET, argv[1], &servaddr.sin_addr);//p:presentation n:numeric
 	servaddr.sin_port = htons(atoi(argv[2]));//host to network short
 	//servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	//servaddr.sin_port        = htons(9877);
@@ -143,17 +139,20 @@ main(int argc, char **argv)
 	for (int i=1 ;i<100 ;i++ ) {//to protect
 		char saveipv4[20];		
 		clilen = sizeof(cliaddr);
-		connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &clilen);
+		connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &clilen);//第三个参数是一个值-结果参数
+		//如果在处于慢系统调用（accept）状态下产生了一个信号，就会使accept返回一个EINTR错误
+		//可以通过修改flag的方式来使得这种情况下，accept可以重启
+		if(connfd==-1&&errno==EINTR){
+			printf("connfd %d errno %d\n",connfd,errno);
+			break;
+		}	
 		inet_ntop(AF_INET,(void*)&cliaddr.sin_addr,saveipv4,20);
 		//printf("%d %d",connfd,errno);
 		// if(restart==1){
 		// 	restart=0;
 		// 	continue;
 		// }
-		if(connfd==-1&&errno==EINTR){
-			printf("connfd %d errno %d\n",connfd,errno);
-			break;
-		}	
+		
 		bprintf(globalfp,"[srv](%d) client[%s:%d] is accepted!\n",(int)getpid(),saveipv4,ntohs(cliaddr.sin_port));	
 		if ( (childpid = fork()) == 0) {	/* child process */
 			close(listenfd);	/* close listening socket */
