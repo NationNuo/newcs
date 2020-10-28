@@ -1,0 +1,23 @@
+#! /bin/bash
+multis=5
+rm stu*
+rm td*
+for i in $(seq 0 $multis)
+do
+    wname="stu_cli_res_${i}.txt"
+    rname="td${i}.txt"
+    if [ ! -f $wname ] ;then
+        touch $wname
+        echo "hello ${i}" > $wname
+        date >> $wname
+    fi
+    if [ ! -f $rname ] ;then
+        touch $rname
+        echo "hello ${i}" > $rname
+        date >> $rname
+    fi
+done
+
+make
+./tcp_echo_srv 127.0.0.1 9877 &
+./tcp_echo_cli 127.0.0.1 9877 5
